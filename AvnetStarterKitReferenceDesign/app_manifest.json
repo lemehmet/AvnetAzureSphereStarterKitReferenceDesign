@@ -5,9 +5,9 @@
   "EntryPoint": "/bin/app",
   "CmdArgs": [ "Avnet-Starter-Kit-reference-V1.0" ],
   "Capabilities": {
-    "AllowedConnections": [],
+    "AllowedConnections": [ "255.255.255.255" ],
     "AllowedTcpServerPorts": [],
-    "AllowedUdpServerPorts": [],
+    "AllowedUdpServerPorts": [41200],
     "Gpio": [ 0, 4, 5, 8, 9, 10, 12, 13, 34 ],
     "Uart": [],
     "I2cMaster": [ "ISU2" ],

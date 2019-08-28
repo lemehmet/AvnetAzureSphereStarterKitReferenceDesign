@@ -37,7 +37,10 @@
 #include <math.h>
 #include <stdlib.h>
 
-// applibs_versions.h defines the API struct versions to use for applibs APIs.
+#include <sys/socket.h> /* for socket() and bind() */
+#include <arpa/inet.h>  /* for sockaddr_in */
+ 
+ // applibs_versions.h defines the API struct versions to use for applibs APIs.
 #include "applibs_versions.h"
 
 #include <applibs/log.h>
@@ -62,6 +65,9 @@ static float angular_rate_dps[3];
 static float lsm6dsoTemperature_degC;
 static float pressure_hPa;
 static float lps22hhTemperature_degC;
+static json_payload[2048];
+static int bcast_socket = -1;
+static struct sockaddr_in broadcastAddr; // Broadcast address
 
 static uint8_t whoamI, rst;
 static int accelTimerFd = -1;
@@ -89,7 +95,43 @@ static int32_t platform_read(int *fD, uint8_t reg, uint8_t *bufp, uint16_t len);
 static int32_t lsm6dso_write_lps22hh_cx(void* ctx, uint8_t reg, uint8_t* data, uint16_t len);
 static int32_t lsm6dso_read_lps22hh_cx(void* ctx, uint8_t reg, uint8_t* data, uint16_t len);
 
-static void increment_counter();
+static unsigned increment_counter();
+static int create_bcast();
+static int broadcast_string(const char* message, size_t len);
+
+static int create_bcast() {
+	// http://cs.baylor.edu/~donahoo/practical/CSockets/code/BroadcastSender.c
+	const char* broadcastIP = "255.255.255.255";                /* IP broadcast address */
+	unsigned short broadcastPort = 41200;     /* Server port */
+	int broadcastPermission;          /* Socket opt to set permission to broadcast */
+	if ((bcast_socket = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0) {
+		Log_Debug("Failed to create broadcast socket: %s (%d).\n", strerror(errno), errno);
+		return -1;
+	}
+
+	broadcastPermission = 1;
+	if (setsockopt(bcast_socket, SOL_SOCKET, SO_BROADCAST, (void*)& broadcastPermission, sizeof(broadcastPermission)) < 0) {
+		Log_Debug("Failed to set bcast permission: %s (%d).\n", strerror(errno), errno);
+		close(bcast_socket);
+		return -1;
+	}
+
+	/* Construct local address structure */
+	memset(&broadcastAddr, 0, sizeof(broadcastAddr));   /* Zero out structure */
+	broadcastAddr.sin_family = AF_INET;                 /* Internet address family */
+	broadcastAddr.sin_addr.s_addr = inet_addr(broadcastIP);/* Broadcast IP address */
+	broadcastAddr.sin_port = htons(broadcastPort);         /* Broadcast port */
+	return 0;
+}
+
+static int broadcast_string(const char* message, size_t len) {
+	if (bcast_socket < 0) {
+		return -1;
+	}
+	if (sendto(bcast_socket, message, len, 0, (struct sockaddr*) & broadcastAddr, sizeof(broadcastAddr)) != len) {
+		Log_Debug("Failed to broadcast message: %s (%d).\n", strerror(errno), errno);
+	}
+}
 
 /// <summary>
 ///     Sleep for delayTime ms
@@ -186,7 +228,19 @@ void AccelTimerEventHandler(EventData *eventData)
 		Log_Debug("LPS22HH: Temperature  [degC]: %.2f\r\n", lps22hhTemperature_degC);
 	}
 
-	increment_counter();
+	unsigned int counter = increment_counter();
+	int len = snprintf(json_payload, sizeof(json_payload), "{\"c\":%u,"
+		"\"acc\":{\"x\":%4.2f,\"y\":%4.2f,\"z\":%4.2f,\"t\":%.2f},"
+		"\"gyr\":{\"x\":%4.2f,\"y\":%4.2f,\"z\":%4.2f},"
+		"\"alt\":{\"hpa\":%4.2f,\"t\":%4.2f}}",
+		counter,
+		acceleration_mg[0], acceleration_mg[1], acceleration_mg[2], lsm6dsoTemperature_degC,
+		angular_rate_dps[0], angular_rate_dps[1], angular_rate_dps[2],
+		pressure_hPa, lps22hhTemperature_degC
+	);
+
+	Log_Debug("Payload: %s\n", json_payload);
+	broadcast_string(json_payload, len + 1);
 
 #if (defined(IOT_CENTRAL_APPLICATION) || defined(IOT_HUB_APPLICATION))
 
@@ -372,6 +426,9 @@ int initI2c(void) {
 
 	Log_Debug("LSM6DSO: Calibrating angular rate complete!\n");
 
+	if (create_bcast() < 0) {
+		Log_Debug("Failed to initialize broadcast interface");
+	}
 
 	// Init the epoll interface to periodically run the AccelTimerEventHandler routine where we read the sensors
 
@@ -629,7 +686,7 @@ static int32_t lsm6dso_read_lps22hh_cx(void* ctx, uint8_t reg, uint8_t* data, ui
 	return ret;
 }
 
-static void increment_counter() {
+static unsigned increment_counter() {
 	// Fancy light show each time a measurement is taken. No practical purpose, just to get the hang of it.
 	static unsigned int counter = 0;
 	counter++;
@@ -643,4 +700,5 @@ static void increment_counter() {
 	if (GPIO_SetValue(userLedBlueFd, counter & 0x00000004 ? GPIO_Value_High : GPIO_Value_Low) < 0) {
 		Log_Debug("ERROR: Could not set BLUE: %s (%d).\n", strerror(errno), errno);
 	}
+	return counter;
 }
