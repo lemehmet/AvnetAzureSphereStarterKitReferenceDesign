@@ -264,6 +264,20 @@ static int InitPeripheralsAndHandlers(void)
 		return -1;
 	}
 
+	// Twin init opens the descriptors.
+	//userLedRedFd = GPIO_OpenAsOutput(MT3620_RDB_LED1_RED, GPIO_OutputMode_PushPull, GPIO_Value_High);
+	//if (userLedRedFd < 0) {
+	//	Log_Debug("ERROR: Could not open LED RED: %s (%d).\n", strerror(errno), errno);
+	//}
+	//userLedGreenFd = GPIO_OpenAsOutput(MT3620_RDB_LED1_GREEN, GPIO_OutputMode_PushPull, GPIO_Value_High);
+	//if (userLedRedFd < 0) {
+	//	Log_Debug("ERROR: Could not open LED GREEN: %s (%d).\n", strerror(errno), errno);
+	//}
+	//userLedBlueFd = GPIO_OpenAsOutput(MT3620_RDB_LED1_BLUE, GPIO_OutputMode_PushPull, GPIO_Value_High);
+	//if (userLedRedFd < 0) {
+	//	Log_Debug("ERROR: Could not open LED BLUE: %s (%d).\n", strerror(errno), errno);
+	//}
+
 	// Tell the system about the callback function that gets called when we receive a device twin update message from Azure
 	AzureIoT_SetDeviceTwinUpdateCallback(&deviceTwinChangedHandler);
 

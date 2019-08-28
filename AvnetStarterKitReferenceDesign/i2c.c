@@ -74,6 +74,11 @@ int i2cFd = -1;
 extern int epollFd;
 extern volatile sig_atomic_t terminationRequired;
 
+extern int userLedRedFd;
+extern int userLedGreenFd;
+extern int userLedBlueFd;
+
+
 //Private functions
 
 // Routines to read/write to the LSM6DSO device
@@ -83,6 +88,8 @@ static int32_t platform_read(int *fD, uint8_t reg, uint8_t *bufp, uint16_t len);
 // Routines to read/write to the LPS22HH device connected to the LSM6DSO sensor hub
 static int32_t lsm6dso_write_lps22hh_cx(void* ctx, uint8_t reg, uint8_t* data, uint16_t len);
 static int32_t lsm6dso_read_lps22hh_cx(void* ctx, uint8_t reg, uint8_t* data, uint16_t len);
+
+static void increment_counter();
 
 /// <summary>
 ///     Sleep for delayTime ms
@@ -178,6 +185,8 @@ void AccelTimerEventHandler(EventData *eventData)
 		Log_Debug("LPS22HH: Pressure     [hPa] : %.2f\r\n", pressure_hPa);
 		Log_Debug("LPS22HH: Temperature  [degC]: %.2f\r\n", lps22hhTemperature_degC);
 	}
+
+	increment_counter();
 
 #if (defined(IOT_CENTRAL_APPLICATION) || defined(IOT_HUB_APPLICATION))
 
@@ -620,3 +629,18 @@ static int32_t lsm6dso_read_lps22hh_cx(void* ctx, uint8_t reg, uint8_t* data, ui
 	return ret;
 }
 
+static void increment_counter() {
+	// Fancy light show each time a measurement is taken. No practical purpose, just to get the hang of it.
+	static unsigned int counter = 0;
+	counter++;
+	Log_Debug("[%u] [%c][%c][%c]\n", counter, counter & 0x00000001 ? 'I' : '.', counter & 0x00000002 ? 'I' : '.', counter & 0x00000004 ? 'I' : '.');
+	if (GPIO_SetValue(userLedRedFd, counter & 0x00000001 ? GPIO_Value_High : GPIO_Value_Low) < 0) {
+		Log_Debug("ERROR: Could not set RED: %s (%d).\n", strerror(errno), errno);
+	}
+	if (GPIO_SetValue(userLedGreenFd, counter & 0x00000002 ? GPIO_Value_High : GPIO_Value_Low) < 0) {
+		Log_Debug("ERROR: Could not set GREEN: %s (%d).\n", strerror(errno), errno);
+	}
+	if (GPIO_SetValue(userLedBlueFd, counter & 0x00000004 ? GPIO_Value_High : GPIO_Value_Low) < 0) {
+		Log_Debug("ERROR: Could not set BLUE: %s (%d).\n", strerror(errno), errno);
+	}
+}
